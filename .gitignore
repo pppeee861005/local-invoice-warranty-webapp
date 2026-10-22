@@ -1,0 +1,42 @@
+# 依據敏捷與安全原則，忽略系統雜檔與可能包含敏感資訊的檔案
+
+# 作業系統產生的快取與暫存檔
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 編輯器與 IDE 設定檔
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 本地日誌與暫存檔案
+*.log
+*.tmp
+*.bak
+
+# 敏感憑證與環境變數檔案 (絕不上傳至公開倉庫)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 測試用的大型影像檔案或使用者個人私密發票 (避免污染 Git 倉庫)
+sample_invoices/private_*
+temp_output/
+*.rar
+*.zip
+
+# Node / NPM / 打包暫存 (若未來擴充)
+node_modules/
+dist/
+.cache/
+

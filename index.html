@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地 OCR 發票保固 WebApp</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 引入官方 Tesseract.js (WASM 輕量版) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 頂部標題區 -->
+        <header class="app-header">
+            <h1>🧾 本地 OCR 發票保固 WebApp <span class="badge-tag">100% 離線隱私</span></h1>
+            <p>免安裝 Python / 零伺服器依賴 / 拖曳發票照片即可自動辨識月份並判定保固期限</p>
+        </header>
+
+        <!-- 設定控制列 -->
+        <section class="control-bar">
+            <div class="control-group">
+                <label for="warranty-months">📦 產品保固期：</label>
+                <select id="warranty-months">
+                    <option value="6">6 個月</option>
+                    <option value="12" selected>12 個月 (1年)</option>
+                    <option value="24">24 個月 (2年)</option>
+                    <option value="36">36 個月 (3年)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="reference-date">📅 基準比對日：</label>
+                <input type="date" id="reference-date">
+            </div>
+            <div class="control-group">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="enable-preprocess" checked>
+                    <span>🖼️ Canvas 黑白增強 (提升辨識率)</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- 拖曳上傳區 -->
+        <section class="drop-zone" id="drop-zone">
+            <input type="file" id="file-input" accept="image/*" style="display: none;" multiple>
+            <div class="drop-icon">📷</div>
+            <h3>點擊選取 或 將發票照片拖曳至此</h3>
+            <p>支援 JPG, PNG, WebP 格式（發票可傾斜，系統自動抓取號碼與日期）</p>
+        </section>
+
+        <!-- 辨識進度條 -->
+        <section class="status-panel" id="status-panel">
+            <div class="status-header">
+                <span id="status-text">⚡ 正在準備 OCR 辨識引擎...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+        </section>
+
+        <!-- 核心結果判定大卡片 (綠/紅燈) -->
+        <section class="result-card" id="result-card">
+            <div class="verdict-banner" id="verdict-banner">
+                <div>
+                    <div class="verdict-title" id="verdict-title">判定中...</div>
+                    <div style="font-size: 13px; opacity: 0.85; margin-top: 4px;" id="verdict-desc"></div>
+                </div>
+                <div style="font-size: 32px;" id="verdict-icon">✅</div>
+            </div>
+
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">發票號碼</div>
+                    <div class="detail-val" id="res-inv-num">--</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">開立日期 (西元)</div>
+                    <div class="detail-val" id="res-inv-date">--</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">保固截止日</div>
+                    <div class="detail-val" id="res-expiry-date">--</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">狀態詳情</div>
+                    <div class="detail-val" id="res-days-left">--</div>
+                </div>
+            </div>
+
+            <!-- OCR 原始文字與影像除錯摺疊檢視 -->
+            <details style="margin-top: 15px; font-size: 12px; color: var(--text-secondary);">
+                <summary style="cursor: pointer;">🔍 檢視前處理影像與 OCR 識別文字</summary>
+                <div style="display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <div style="margin-bottom: 5px; font-weight: 500;">增強後二值化黑白影像：</div>
+                        <img id="preview-preprocessed" style="max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); display: none;">
+                        <div id="no-preview-text" style="font-size: 11px; color: #64748b;">(未啟用或未產生)</div>
+                    </div>
+                    <div style="flex: 2; min-width: 250px;">
+                        <div style="margin-bottom: 5px; font-weight: 500;">OCR 原始文字：</div>
+                        <pre id="raw-ocr-text" style="background: var(--bg-input); padding: 10px; border-radius: var(--radius-sm); overflow-x: auto; white-space: pre-wrap; max-height: 220px;"></pre>
+                    </div>
+                </div>
+            </details>
+        </section>
+
+        <!-- 歷史批次紀錄表格 -->
+        <section class="history-section">
+            <div class="history-header">
+                <h3>📋 本次辨識紀錄 (<span id="record-count">0</span>)</h3>
+                <button class="btn-export" id="btn-export">📥 匯出 Excel (CSV)</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>發票號碼</th>
+                        <th>開立日期</th>
+                        <th>保固到期日</th>
+                        <th>狀態判定</th>
+                        <th>備註</th>
+                    </tr>
+                </thead>
+                <tbody id="history-tbody">
+                    <tr id="empty-row">
+                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 25px;">
+                            尚無辨識紀錄，請拖曳上傳發票照片
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <!-- 引用核心 Lego 積木 -->
+    <script src="js/image_preprocessor.js"></script>
+    <script src="js/warranty_logic.js"></script>
+    <script src="js/date_extractor.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+

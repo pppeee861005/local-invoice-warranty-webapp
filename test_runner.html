@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>發票 OCR 保固判定 - 核心積木單元測試驗收</title>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 30px; margin: 0; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { font-size: 24px; margin-bottom: 8px; color: #38bdf8; }
+        .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 25px; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #334155; }
+        .test-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #334155; }
+        .test-item:last-child { border-bottom: none; }
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .pass { background: #065f46; color: #34d399; }
+        .fail { background: #881337; color: #f87171; }
+        .summary-box { display: flex; gap: 20px; margin-top: 15px; }
+        .summary-item { background: #0f172a; padding: 12px 20px; border-radius: 8px; flex: 1; text-align: center; }
+        .summary-num { font-size: 24px; font-weight: bold; color: #38bdf8; }
+        pre { background: #0f172a; padding: 10px; border-radius: 6px; font-size: 12px; color: #cbd5e1; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 發票核心演算法與解析積木：驗收測試</h1>
+        <div class="subtitle">依據「架構師心法二：單元驗證」——在開發 UI 之前，確保業務計算與正則解析 100% 正確。</div>
+
+        <div class="card">
+            <h3>單元測試結果</h3>
+            <div id="test-results"></div>
+            
+            <div class="summary-box">
+                <div class="summary-item">總測試數：<span class="summary-num" id="total-count">0</span></div>
+                <div class="summary-item">通過數：<span class="summary-num" style="color: #34d399;" id="pass-count">0</span></div>
+                <div class="summary-item">失敗數：<span class="summary-num" style="color: #f87171;" id="fail-count">0</span></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>即時試算體驗區（可自訂文字測試）</h3>
+            <textarea id="sample-input" style="width: 100%; height: 90px; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 10px;" placeholder="在此貼上任何模擬發票文字...">統一發票 113年09-10月
+發票號碼: AB-98765432
+開立時間: 113/10/18 16:30:00
+總計: NT$ 2,500</textarea>
+            <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                <label>保固期限(月): <input type="number" id="warranty-months" value="12" style="width: 70px; background: #0f172a; color: #fff; border: 1px solid #334155; padding: 5px; border-radius: 4px;"></label>
+                <button onclick="runLiveTest()" style="background: #38bdf8; color: #0f172a; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">立即測試解析</button>
+            </div>
+            <div id="live-output" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <script src="js/warranty_logic.js"></script>
+    <script src="js/date_extractor.js"></script>
+    <script>
+        const testCases = [
+            {
+                name: "測試 1：標準民國年發票 (113/10/18) 萃取",
+                text: "電子發票證明聯 113年09-10月 AB-98765432 開立日期:113/10/18",
+                expectNum: "AB-98765432",
+                expectDate: "2024-10-18"
+            },
+            {
+                name: "測試 2：標準西元年發票 (2025-03-01) 萃取",
+                text: "統一超商 7-ELEVEN 發票 CD-11223344 日期: 2025-03-01 12:00",
+                expectNum: "CD-11223344",
+                expectDate: "2025-03-01"
+            },
+            {
+                name: "測試 3：雙月期別備援 (無具體開立日)",
+                text: "台灣中油發票 EF-55667788 113年05-06月份 總計450元",
+                expectNum: "EF-55667788",
+                expectDate: "2024-06-01" // 備援取次月1號
+            },
+            {
+                name: "測試 4：保固到期日計算（剛好過期判定）",
+                fn: () => {
+                    // 基準日 2026-10-22，發票 2024-10-15，保固 12 個月（2025-10-15 到期，應判定過期）
+                    const res = WarrantyLogic.evaluate("2024-10-15", 12, "2026-10-22");
+                    return res.isCovered === false && res.overdueDays > 0;
+                }
+            },
+            {
+                name: "測試 5：保固有效判定（剩餘天數計算）",
+                fn: () => {
+                    // 基準日 2026-10-22，發票 2026-05-01，保固 12 個月（2027-05-01 到期，應判定有效）
+                    const res = WarrantyLogic.evaluate("2026-05-01", 12, "2026-10-22");
+                    return res.isCovered === true && res.remainingDays > 100;
+                }
+            }
+        ];
+
+        function runAllTests() {
+            const container = document.getElementById('test-results');
+            container.innerHTML = '';
+            let passCount = 0;
+
+            testCases.forEach((tc, idx) => {
+                let passed = false;
+                let details = '';
+
+                if (tc.fn) {
+                    passed = tc.fn();
+                } else {
+                    const parsed = DateExtractor.extract(tc.text);
+                    passed = (parsed.invoiceNumber === tc.expectNum && parsed.date === tc.expectDate);
+                    details = `抓到: [號碼: ${parsed.invoiceNumber}, 日期: ${parsed.date}]`;
+                }
+
+                if (passed) passCount++;
+
+                const div = document.createElement('div');
+                div.className = 'test-item';
+                div.innerHTML = `
+                    <div>
+                        <div style="font-weight: 500;">${tc.name}</div>
+                        ${details ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 3px;">${details}</div>` : ''}
+                    </div>
+                    <span class="status-badge ${passed ? 'pass' : 'fail'}">${passed ? '✓ PASS' : '✗ FAIL'}</span>
+                `;
+                container.appendChild(div);
+            });
+
+            document.getElementById('total-count').innerText = testCases.length;
+            document.getElementById('pass-count').innerText = passCount;
+            document.getElementById('fail-count').innerText = testCases.length - passCount;
+        }
+
+        function runLiveTest() {
+            const text = document.getElementById('sample-input').value;
+            const months = document.getElementById('warranty-months').value;
+            const parsed = DateExtractor.extract(text);
+            const warranty = WarrantyLogic.evaluate(parsed.date, months);
+
+            document.getElementById('live-output').innerHTML = `
+                <pre>${JSON.stringify({
+                    "OCR萃取結果": parsed,
+                    "保固判定結果": warranty
+                }, null, 2)}</pre>
+            `;
+        }
+
+        // 初始化執行測試與即時演示
+        runAllTests();
+        runLiveTest();
+    </script>
+</body>
+</html>
+
